@@ -84,6 +84,12 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
                        static_cast<int>(helper.K()));
     }
   } else {
+    if (has_a_zero_point_) {
+      // currently zero point is only supported in Gemmlowp path above
+      // in future, the selection of Eigen/Gemmlowp/mklml/etc. should be in a common math library like SGEMM
+      ORT_NOT_IMPLEMENTED("MatMulInteger: Unsupported input types with zero point");
+    }
+
 #define HANDLE_TYPES_WITH_EIGEN(T1, T2, T3)                                     \
   if (a->DataType() == DataTypeImpl::GetType<T1>() &&                           \
       b->DataType() == DataTypeImpl::GetType<T2>() &&                           \
