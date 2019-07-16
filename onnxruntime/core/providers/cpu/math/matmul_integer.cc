@@ -84,10 +84,25 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
                        static_cast<int>(helper.K()));
     }
   } else {
-    if (has_a_zero_point_) {
+    if (has_a_zero_point_ || has_b_zero_point_) {
       // currently zero point is only supported in Gemmlowp path above
       // in future, the selection of Eigen/Gemmlowp/mklml/etc. should be in a common math library like SGEMM
-      ORT_NOT_IMPLEMENTED("MatMulInteger: Unsupported input types with zero point");
+
+      auto IsZeroPointTensorAllZero = [](OpKernelContext* ctx, int input_idx) -> bool {
+        auto t = ctx->Input<Tensor>(input_idx);
+        ORT_ENFORCE(t->Shape().NumDimensions() <= 1 && t->Shape().Size() == 1,
+                    "Currently only scalar zero_point is supported. TODO: add per channel zero point support.");
+        ORT_ENFORCE(t->DataType() == DataTypeImpl::GetType<int8_t>() ||
+                    t->DataType() == DataTypeImpl::GetType<uint8_t>());
+        auto data = reinterpret_cast<const int8_t*>(t->DataRaw());
+        auto vec = std::vector<int8_t>(data, data + t->Shape().Size());
+        return std::all_of(vec.begin(), vec.end(), [](int8_t v) { return v == 0; });
+      };
+
+      if ((has_a_zero_point_ && !IsZeroPointTensorAllZero(ctx, 2)) ||
+          (has_b_zero_point_ && !IsZeroPointTensorAllZero(ctx, 3))) {
+        ORT_NOT_IMPLEMENTED("MatMulInteger: Unsupported input types with zero point");
+      }
     }
 
 #define HANDLE_TYPES_WITH_EIGEN(T1, T2, T3)                                     \
