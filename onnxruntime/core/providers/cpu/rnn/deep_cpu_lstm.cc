@@ -14,6 +14,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -372,6 +373,11 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
     }
   }
 
+  auto& ctx_internal = dynamic_cast<OpKernelContextInternal&>(context);
+  // the session always has a threadpool so dereferencing is safe
+  // TODO: Fix having to use a const_cast to run tasks using the threadpool
+  auto& thread_pool = const_cast<concurrency::ThreadPool&>(*ctx_internal.GetOperatorThreadPool());
+
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
   ORT_RETURN_IF_ERROR(status);
@@ -476,7 +482,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[0],
                                                          activation_funcs_.Entries()[1],
                                                          activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+                                                         clip_, thread_pool);
 
     bw = std::make_unique<detail::UniDirectionalLstm<T>>(alloc, logger,
                                                          seq_length, batch_size, input_size,
@@ -485,7 +491,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[3],
                                                          activation_funcs_.Entries()[4],
                                                          activation_funcs_.Entries()[5],
-                                                         clip_, ttp_);
+                                                         clip_, thread_pool);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
@@ -497,7 +503,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                                          activation_funcs_.Entries()[0],
                                                          activation_funcs_.Entries()[1],
                                                          activation_funcs_.Entries()[2],
-                                                         clip_, ttp_);
+                                                         clip_, thread_pool);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }
@@ -1117,7 +1123,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
 
 template <typename T>
 void UniDirectionalLstm<T>::SetNumThreads() {
-  int threads = std::thread::hardware_concurrency() - 1;
+  int threads = ttp_.NumThreads() - 1;
 
   if (threads < 1)
     threads = 1;

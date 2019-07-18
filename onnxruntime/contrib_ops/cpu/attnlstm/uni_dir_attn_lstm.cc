@@ -472,7 +472,7 @@ void UniDirectionalAttnLstm<T>::GateComputations(span_T_iter& out, span_T_iter& 
 
 template <typename T>
 void UniDirectionalAttnLstm<T>::SetNumThreads() {
-  int threads = std::thread::hardware_concurrency() - 1;
+  int threads = ttp_.NumThreads() - 1;
 
   if (threads < 1)
     threads = 1;

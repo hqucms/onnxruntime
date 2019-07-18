@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/op_kernel_context_internal.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -124,6 +125,11 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
 
   std::vector<int64_t> Y_c_dims{num_directions_, batch_size, hidden_size_};
   Tensor* Y_c = context.Output(/*index*/ 2, Y_c_dims);
+
+  auto& ctx_internal = dynamic_cast<OpKernelContextInternal&>(context);
+  // the session always has a threadpool so dereferencing is safe
+  // TODO: Fix having to use a const_cast to run tasks using the threadpool
+  auto& thread_pool = const_cast<concurrency::ThreadPool&>(*ctx_internal.GetOperatorThreadPool());
 
   AllocatorPtr alloc;
   status = context.GetTempSpaceAllocator(&alloc);
@@ -248,7 +254,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, ttp_);
+        clip_, thread_pool);
 
     auto bam = std::make_unique<BahdanauAttention<T>>(
         alloc, logger, batch_size, max_memory_step, memory_depth, query_depth, am_attn_size, false);
@@ -270,7 +276,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[3],
         activation_funcs_.Entries()[4],
         activation_funcs_.Entries()[5],
-        clip_, ttp_);
+        clip_, thread_pool);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
     bw->Compute(input, sequence_lens_span, num_directions_, input_weights_2, hidden_weights_2, output_2, hidden_output_2, last_cell_2);
@@ -296,7 +302,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
         activation_funcs_.Entries()[0],
         activation_funcs_.Entries()[1],
         activation_funcs_.Entries()[2],
-        clip_, ttp_);
+        clip_, thread_pool);
 
     fw->Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1, output_1, hidden_output_1, last_cell_1);
   }
