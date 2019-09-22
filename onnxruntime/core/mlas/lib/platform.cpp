@@ -16,6 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include <string>
 
 //
 // Stores the platform information.
@@ -126,7 +127,11 @@ Return Value:
 
         uint64_t xcr0 = MlasReadExtendedControlRegister(_XCR_XFEATURE_ENABLED_MASK);
 
-        if ((xcr0 & 0x6) == 0x6) {
+        const char *isa_type = getenv("MLAS_CPU_USE_INSTRUCTION_SETS");
+        if (isa_type==nullptr) isa_type = "99";
+        auto itype = std::stoi(isa_type);
+
+        if (itype>0 && (xcr0 & 0x6) == 0x6) {
 
             this->GemmFloatKernel = MlasGemmFloatKernelAvx;
 
@@ -155,13 +160,13 @@ Return Value:
             __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
 #endif
 
-            if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+            if (itype>1 && ((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
                 this->GemmU8U8CopyPackARoutine = MlasGemmU8U8CopyPackAAvx2;
                 this->GemmU8U8CopyPackBRoutine = MlasGemmU8U8CopyPackBAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
 
-                if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
+                if (itype>2 && ((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
 
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelAvx512F;
