@@ -196,7 +196,6 @@ class UniDirectionalLstm {
                      const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
                      const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
                      const ActivationFuncs::Entry& activation_func_h, float clip,
-                     concurrency::ThreadPool& lstm_tp_,
                      concurrency::ThreadPool* mlas_tp_);
 
   void Compute(const gsl::span<const T>& inputs, const gsl::span<const int>& sequence_lengths, int num_directions,
@@ -279,7 +278,6 @@ class UniDirectionalLstm {
   ActivationInfo<deepcpu::ActivationFuncPtr> activation_g_;
   ActivationInfo<deepcpu::LstmMergeGatesFuncPtr> activation_h_;
 
-  concurrency::ThreadPool& lstm_tp_;
   concurrency::ThreadPool* mlas_tp_;
 };
 
@@ -460,7 +458,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                      activation_funcs_.Entries()[0],
                                      activation_funcs_.Entries()[1],
                                      activation_funcs_.Entries()[2],
-                                     clip_, lstm_tp_, mlas_thread_pool);
+                                     clip_, mlas_thread_pool);
 
     detail::UniDirectionalLstm<T> bw(alloc, logger, seq_length, batch_size, input_size,
                                      hidden_size_, Direction::kReverse, input_forget_,
@@ -468,7 +466,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                      activation_funcs_.Entries()[3],
                                      activation_funcs_.Entries()[4],
                                      activation_funcs_.Entries()[5],
-                                     clip_, lstm_tp_, mlas_thread_pool);
+                                     clip_, mlas_thread_pool);
 
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
                output_1, hidden_output_1, last_cell_1);
@@ -481,7 +479,7 @@ Status DeepCpuLstmOp::ComputeImpl(OpKernelContext& context) const {
                                      activation_funcs_.Entries()[0],
                                      activation_funcs_.Entries()[1],
                                      activation_funcs_.Entries()[2],
-                                     clip_, lstm_tp_, mlas_thread_pool);
+                                     clip_, mlas_thread_pool);
 
     fw.Compute(input, sequence_lens_span, num_directions_, input_weights_1, recurrent_weights_1,
                output_1, hidden_output_1, last_cell_1);
@@ -554,7 +552,6 @@ UniDirectionalLstm<T>::UniDirectionalLstm(AllocatorPtr allocator,
                                           const ActivationFuncs::Entry& activation_func_g,
                                           const ActivationFuncs::Entry& activation_func_h,
                                           const float clip,
-                                          concurrency::ThreadPool& lstm_tp,
                                           concurrency::ThreadPool* mlas_tp)
     : allocator_(allocator),
       logger_(logger),
@@ -567,7 +564,6 @@ UniDirectionalLstm<T>::UniDirectionalLstm(AllocatorPtr allocator,
       clip_(clip),
       use_bias_(!bias.empty()),
       use_peepholes_(!peephole_weights.empty()),
-      lstm_tp_(lstm_tp),
       mlas_tp_(mlas_tp) {
   activation_f_ = {deepcpu::ActivationFuncByName(activation_func_f.name),
                    activation_func_f.alpha,
@@ -884,7 +880,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
       }
     };
 
-    ExecuteLambdaInParallel("Processing batch", hidden_gemm_and_activations, batch_size_, fused_hidden_rows, lstm_tp_, logger_);
+    ExecuteLambdaInParallel("Processing batch", hidden_gemm_and_activations, batch_size_, fused_hidden_rows, logger_);
 
   } else {
     span_T_iter c_prev = batched_internal_state_prev_one_step.begin();
@@ -1121,10 +1117,7 @@ void UniDirectionalLstm<T>::GateComputations(span_T_iter& out, span_T_iter& out_
 
 template <typename T>
 void UniDirectionalLstm<T>::SetNumThreads() {
-  int threads = std::thread::hardware_concurrency() - 1;
-
-  if (threads < 1)
-    threads = 1;
+  int threads = 1;
 
   hidden_num_threads_ = threads;
   batch_parallel_ = false;

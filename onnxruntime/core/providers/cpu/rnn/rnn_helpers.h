@@ -213,35 +213,15 @@ T* SafeRawPointer(typename gsl::span<T> span, size_t offset, size_t size) {
 
 template <typename TLambda>
 void ExecuteLambdaInParallel(const std::string& name, TLambda lambda, int max, int step,
-                             onnxruntime::concurrency::ThreadPool& ttp,
                              const ::onnxruntime::logging::Logger& logger) {
   // #define NOTHREADS to execute the lambdas directly and in order if you need to do that to debug
 
-#ifdef NOTHREADS
-  ORT_UNUSED_PARAMETER(ttp);
   ORT_UNUSED_PARAMETER(logger);
 
   for (int i = 0; i < max; i += step) {
     (void)name;
     std::bind(lambda, i)();
   }
-#else
-
-  ORT_UNUSED_PARAMETER(name);
-  ORT_UNUSED_PARAMETER(logger);
-
-  std::atomic<int> done(0);
-  for (int i = 0; i < max; i += step) {
-    ttp.Schedule([lambda, i, &done]() {
-      lambda(i);
-      ++done;
-    });
-  }
-
-  int totalTasks = max / (step > 0 ? step : 1) + (max % step > 0 ? 1 : 0);
-  while (done != totalTasks)
-    ;
-#endif
 }
 
 void DumpMatrixImpl(const std::string& name, const float* src, int row, int col,
