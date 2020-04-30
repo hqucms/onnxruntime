@@ -206,8 +206,8 @@ struct ModelMetadata : Base<OrtModelMetadata> {
 
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
-  Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
-  Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
+  Session(const Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
+  Session(const Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
   // Run that will allocate the output values
   std::vector<Value> Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
